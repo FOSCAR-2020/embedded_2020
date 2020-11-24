@@ -1140,6 +1140,7 @@ void new_mode_parking(){
   else if(parking_flag == 1 && is_parking_area_right() && is_horizon_parking())
   {
     horizon_parking_flag = 1;
+    DesireSpeed_Write(0);
   }
   else if(parking_flag == 1 && !is_parking_area_right()) {
     parking_flag = 2;
@@ -1151,12 +1152,14 @@ void new_mode_parking(){
   // 수평 주차
   else if(horizon_parking_flag == 1 && parking_flag == 3)
   {
+    continue;
     // horizontal_parking_right()
     // return_lane_horizontal_right();
     // parking_flag = 4;
   }
   // 수직 주차
   else if(horizon_parking_flag == 0 && parking_flag == 3) {
+    continue;
     // vertical_parking();       // 주차모드
     // return_lane_vertical_right();
     // parking_flag = 4;
@@ -1853,7 +1856,7 @@ int main(int argc, char **argv)
           mode_outbreak();
           break;
       case 4 :  // 주차
-          mode_parking();
+          new_mode_parking();
           break;
       case 5 :  // 회전 교차로
           mode_rotary();
