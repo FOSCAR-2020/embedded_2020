@@ -73,7 +73,7 @@ int i, j;
 char byte = 0x80;
 
 // struct timeval stop, start;
-clock_t stop, start;
+struct timeval stop, start;
 int time_flag = 0;
 
 ////////////////////////////////////
@@ -100,6 +100,10 @@ volatile int outbreak_flag = 0; // 3
 // 2 : 표지판 인식 후
 
 volatile int parking_flag = 0; // 4
+
+volatile int horizon_parking_flag = 0;
+volatile int vertical_parking_flag = 0;
+
 // 0 : 첫번째 장애물 인식
 // 1 : 깊이 판단
 // 2 : 두번째 장애물 인식
@@ -200,6 +204,7 @@ void vertical_parking();
 void return_lane_horizontal();
 void return_lane_vertical();
 void mode_parking();
+void new_mode_parking();
 
 ////////////////////////////회전교차로 변수/////////////////////////////
 
@@ -932,21 +937,26 @@ void go_backward_right()            // 주차 공간인지 판단 후 후진
 {
   printf("go backward\n");
   SteeringServoControl_Write(1000);
-  DesireSpeed_Write(-100);
+  DesireSpeed_Write(-60);
+
+  int dist_3, dist_4, dist_5;
 
   while(1) {
-    dist = get_distance(5);
+    dist_3 = get_distance(3);  // 오빵
+    dist_4 = get_distance(4);  // 똥꼬
+    dist_5 = get_distance(5);  // 왼빵
 
-    if(dist < 70 && backward_right_flag == 0){  //주차공간을 찾아서 오른쪽 조향으로 들어감
+
+    if(dist_5 < 70 && backward_right_flag == 0){  //주차공간을 찾아서 오른쪽 조향으로 들어감
       backward_right_flag = 1;
     }
-    else if(dist < 50 && backward_right_flag == 2){
+    else if(dist_5 < 50 && backward_right_flag == 2){
       DesireSpeed_Write(0);
-      usleep(300000);
-      parking_flag = 4;         // 후진 완료
+      usleep(1000000);
+      //parking_flag = 4;         // 후진 완료
       break;
     }
-    else if(dist > 100 && backward_right_flag == 1){
+    else if(dist_5 > 100 && backward_right_flag == 1){
         backward_right_flag = 2;
     }
   }
@@ -992,12 +1002,12 @@ void horizontal_parking_right()       // 수평 주차 모드
   /*왼쪽으로 최대조향하고 주차완료될 떄까지 후진*/
 
   SteeringServoControl_Write(2000);
-  DesireSpeed_Write(-100);
+  DesireSpeed_Write(-40);//-60
 
   while(1){
     dist = get_distance(4);
 
-    if(dist < 8 ) {                 // 후방 거리가 10cm 이내이면 주차 완료
+    if(dist < 11) {//8                 // 후방 거리가 10cm 이내이면 주차 완료
       DesireSpeed_Write(0);
       break;
     }
@@ -1037,6 +1047,7 @@ void vertical_parking()       // 수직 주차 모드
 
 void return_lane_vertical_right()      // 수직 주차 완료 후 차선 복귀
 {
+  CarLight_Write(ALL_OFF);
   angle = 1500;
   DesireSpeed_Write(100);
 
@@ -1067,26 +1078,31 @@ void return_lane_horizontal_right()   // 수평 주차 완료 후 차선 복귀
 {
   SteeringServoControl_Write(2000);
   usleep(300000);
-  DesireSpeed_Write(30);
+  DesireSpeed_Write(30);//30
 
   while(1){
     dist = get_distance(2);
-    if(dist > 200){     // 오른쪽 거리가 100 cm 이상이면 멈춤
+    if(dist > 250){     // 오른쪽 거리가 100 cm 이상이면 멈춤
       printf("지금이니");
+    Alarm_Write(ON);
     // if(dist > 40){     // 오른쪽 거리가 100 cm 이상이면 멈춤
       break;
+
     }
   }
 
   SteeringServoControl_Write(1000);
-  usleep(300000);
+  //
+  DesireSpeed_Write(60);
+  //
+  // usleep(300000);
 
   while(1){
     dist = get_distance(4);
 
     if(dist > 200){       // 후방 거리가 150 이상이면 멈춤
       DesireSpeed_Write(0);
-      usleep(300000);
+      usleep(3000000);
       break;
     }
   }
@@ -1100,6 +1116,131 @@ bool is_parking_finish_right()
   if(dist > 70 && dist1 > 70) return true;
   //printf("parking run@@\n");
   return false;
+}
+
+void new_mode_parking(){
+  // first curve
+  if(curve_count == 0 && angle < 1150){
+    curve_count = 1;
+    return;
+  }
+  // second curve
+  else if(curve_count == 1 && angle > 1850){
+    curve_count = 2;
+    return;
+  }
+  // final curve : Danger Zone
+  else if(curve_count == 2 && angle < 1300){
+    curve_count = 3;
+    // 오른쪽 풀 조향
+    CameraYServoControl_Write(1630);
+    DesireSpeed_Write(60);
+    return;
+  }
+  else if(curve_count < 3){
+    return;
+  }
+
+  // real parking mode 진입
+
+  // 오른쪽 뒤센서 기준 벽과 장애물 검출시 flag changer
+  // 첫 장애물
+  if(parking_flag == 0 && is_parking_area_right()) {
+    // 0 -> 1 : parking space
+    parking_flag = 1;
+    //DesireSpeed_Write(80);
+    // if(horizon_parking_flag == -1)
+    // {
+    //   DesireSpeed_Write(0);
+    //   usleep(5000000);
+    // }
+    DesireSpeed_Write(80);
+  }
+  // 첫 장애물 진행 중 is_horizon_parking 을 만족할때,
+  else if(parking_flag == 1 && is_parking_area_right() && is_horizon_parking())
+  {
+    horizon_parking_flag = 1;
+    //Alarm_Write(ON);
+  }
+  else if(parking_flag == 1 && !is_parking_area_right()) {
+    if (horizon_parking_flag == 0) {
+      Alarm_Write(ON);
+    }
+
+    parking_flag = 2;
+  }
+  else if(parking_flag == 2 && is_parking_area_right()) {
+    printf("두번째 장애물\n");
+    Alarm_Write(ON);
+    parking_flag = 777; // time check
+  }
+  else if(parking_flag == 777) {
+    if (time_flag == 0) {
+      gettimeofday(&start, NULL);
+      time_flag = 1;
+    }
+    else {
+      gettimeofday(&stop, NULL);
+      double time_go = (double)((stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec)/1000000.0;
+      if (time_go > 0.15) {
+        DesireSpeed_Write(0);
+        usleep(1000000);
+        parking_flag = 3;
+        time_flag = 0;
+      }
+    }
+  }
+  // 수평 주차
+  else if(horizon_parking_flag == 1 && parking_flag == 3)
+  {
+    go_backward_right();
+    horizontal_parking_right();
+    return_lane_horizontal_right();
+    parking_flag = 4;
+    Alarm_Write(ON);
+    return;
+  }
+  // 수직 주차
+  else if(horizon_parking_flag == 0 && parking_flag == 3) {
+    go_backward_right();
+    vertical_parking();       // 주차모드
+    return_lane_vertical_right();
+    parking_flag = 4;
+    return;
+  }
+  else if(parking_flag == 4)
+  {
+    printf("sex!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    if (parking_finish){
+      DesireSpeed_Write(40);
+    }
+    else{
+      DesireSpeed_Write(40);
+    }
+
+    // while(!is_parking_finish_right()) {
+    //   driving_write_steer();
+    // }
+
+    if(!parking_finish) {
+      if (is_parking_finish_right())
+      {
+        parking_finish = 1;         // 첫번째 주차 완료 표시
+        parking_flag = 0;           // 첫번째 주차 완료 후 다시 주차 모드 시작
+        backward_right_flag = 0;
+
+        if(horizon_parking_flag == 1)
+        {
+          horizon_parking_flag = -1;
+        }
+      }
+    }
+    else {
+      DesireSpeed_Write(150);
+      parking_flag = -1;     // 두번째 주차 완료 후 모드 변경
+      mode++;
+    }
+  }
 }
 
 void mode_parking(){
@@ -1138,7 +1279,9 @@ void mode_parking(){
   else if(parking_flag == 1 && is_horizon_parking() && is_parking_area_right())
   {
     DesireSpeed_Write(0);
-    return;
+    usleep(10000000);
+    DesireSpeed_Write(80);
+    parking_flag = 4;
   }
   else if(parking_flag == 1 && !is_parking_area_right()) {
     printf("수직주차 구간\n");
@@ -1161,20 +1304,20 @@ void mode_parking(){
   }
   else if(parking_flag==777){
     if (time_flag == 0) {
-      start = clock();
+      //start = clock();
       time_flag = 1;
     }
     else {
-      stop = clock();
-      float res2 = (float) (stop - start) / CLOCKS_PER_SEC;
-      printf("interval time : %f \n", res2);
-      if (res2 > 0.4) {
-        DesireSpeed_Write(0);
-        usleep(10000000);
-        // DesireSpeed_Write(80);
-          parking_flag = 3;
-          time_flag = 0;
-      }
+      //stop = clock();
+      //float res2 = (float) (stop - start) / CLOCKS_PER_SEC;
+      //printf("interval time : %f \n", res2);
+      // if (res2 > 0.4) {
+      //   DesireSpeed_Write(0);
+      //   usleep(10000000);
+      //   // DesireSpeed_Write(80);
+      //     parking_flag = 3;
+      //     time_flag = 0;
+      // }
     }
 
   }
@@ -1818,7 +1961,8 @@ int main(int argc, char **argv)
 
           break;
       case 4 :  // 주차
-          mode_parking();
+          //mode_parking();
+          new_mode_parking();
           printf("mode %d %d\n",mode,curve_count);
           printf("dist: %d wall: %d\n",dist,wall);
 
