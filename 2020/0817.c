@@ -22,8 +22,6 @@
 #include "input_cmd.h"
 #include "exam_cv.h"
 
-#define STARTMODE4 1
-
 
 #define CAPTURE_IMG_W       1280
 #define CAPTURE_IMG_H       720
@@ -250,7 +248,7 @@ void mode_tunnel();
 //////////////////////////추월 차선/////////////////////////////////
 
 volatile bool is_return = false;
-
+int vertical_break_flag=0;
 int is_passing_lane();
 void go_left();
 void go_right();
@@ -392,7 +390,9 @@ static void drive(struct display *disp, struct buffer *cambuf)
         //1 : normal drive
         //2 : rotary drive
 
-        if(mode == 4 && curve_count < 3){
+        // if(mode == 4 && curve_count < 3){
+        if(mode == 4 ){
+
           temp_angle = line_detector(srcbuf, VPE_OUTPUT_W, VPE_OUTPUT_H, cam_pbuf[0], VPE_OUTPUT_W, VPE_OUTPUT_H, slope, 777);
 
         }
@@ -415,7 +415,12 @@ static void drive(struct display *disp, struct buffer *cambuf)
           }
         }
         else{
-          temp_angle = line_detector(srcbuf, VPE_OUTPUT_W, VPE_OUTPUT_H, cam_pbuf[0], VPE_OUTPUT_W, VPE_OUTPUT_H, slope, 1);
+
+          if (mode == 5 && vertical_break_flag==0)
+            temp_angle = line_detector(srcbuf, VPE_OUTPUT_W, VPE_OUTPUT_H, cam_pbuf[0], VPE_OUTPUT_W, VPE_OUTPUT_H, slope, 777);
+          else
+            temp_angle = line_detector(srcbuf, VPE_OUTPUT_W, VPE_OUTPUT_H, cam_pbuf[0], VPE_OUTPUT_W, VPE_OUTPUT_H, slope, 1);
+
           if(mode == 5 && rotary_flag == 0 && stop_line_flag == 1 && temp_angle >= 1500){
             temp_angle = 1300;
           }
@@ -1088,26 +1093,25 @@ void return_lane_vertical_right()      // 수직 주차 완료 후 차선 복귀
   CarLight_Write(ALL_OFF);
   angle = 1500;
   DesireSpeed_Write(50);
+  int full_steer_flag = 0;
 
   while(1) {
     SteeringServoControl_Write(angle);
     dist = get_distance(4);
 
     // if(dist < 20){  //4번 센서랑 벽까지 거리가 20미만 이면 가운데 맞추면서 나옴
-    if(dist < 20){
+    if(dist < 40 && full_steer_flag == 0){
       angle = 1500;
-      continue;
     }
-
-    else if(dist > 170){
+    else if(dist > 170 && full_steer_flag <= 2){
+      full_steer_flag = 2;
       DesireSpeed_Write(0);
       usleep(2000000);
       break;
     }
-
-    else if(dist > 20){ // 후방 거리가 30보다 커지면 오른쪽 최대조향
+    else if(dist >= 40 && full_steer_flag <= 1){ // 후방 거리가 30보다 커지면 오른쪽 최대조향
+      full_steer_flag = 1;
       angle = 1000;
-      continue;
     }
   }
 }
@@ -1171,7 +1175,8 @@ void new_mode_parking(){
   else if(curve_count == 2 && angle < 1300){
     curve_count = 3;
     // 오른쪽 풀 조향
-    CameraYServoControl_Write(1630);
+    ///debug
+   // CameraYServoControl_Write(1630);
     DesireSpeed_Write(60);
     return;
   }
@@ -1221,7 +1226,7 @@ void new_mode_parking(){
     else {
       gettimeofday(&stop, NULL);
       double time_go = (double)((stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec)/1000000.0;
-      if (time_go > 0.185) {
+      if (time_go > 0.28) {
         DesireSpeed_Write(0);
         usleep(1000000);
         parking_flag = 3;
@@ -1252,17 +1257,18 @@ void new_mode_parking(){
   {
     printf("hh");
     if (parking_finish){
-      DesireSpeed_Write(40);
+      DesireSpeed_Write(80);
     }
     else{
-      DesireSpeed_Write(40);
+      DesireSpeed_Write(80);
     }
     ///문제점1. 커브돌때 이 와일문에 너무 늦게 탈출하여 커브를 인식못하고 나가버림 헤결필요
-    while(!is_parking_finish_right()) {
+    while(!is_parking_finish_right()&& parking_finish==0) {
       driving_write_steer();
     }
     /////////////////////////////////////////////////////qnssy
-    DesireSpeed_Write(80);
+    printf("speed 60");
+    DesireSpeed_Write(60);//털리는 구간1
     if(!parking_finish) {
       parking_finish = 1;         // 첫번째 주차 완료 표시
       parking_flag = 0;           // 첫번째 주차 완료 후 다시 주차 모드 시작
@@ -1274,7 +1280,8 @@ void new_mode_parking(){
       }
     }
     else {
-      DesireSpeed_Write(80);
+      DesireSpeed_Write(60);//털리는 구간 2
+
       parking_flag = -1;     // 두번째 주차 완료 후 모드 변경
       mode++;
       printf("mode change\n");
@@ -1301,7 +1308,8 @@ void mode_parking(){
   }
   else if(curve_count == 2 && angle < 1300){//1150
     curve_count++;
-    CameraYServoControl_Write(1630);
+
+    // CameraYServoControl_Write(1630);
     DesireSpeed_Write(80); // 80
     // CarLight_Write(ALL_OFF);
 
@@ -1311,6 +1319,7 @@ void mode_parking(){
   }
   else if(curve_count < 3){
     return;
+
   }
 
   if(parking_flag == 0 && is_parking_area_right()) {
@@ -1477,6 +1486,7 @@ void mode_rotary()
       // printf("rotaty_start!!!");
       start1 = clock();
       CameraYServoControl_Write(1680);
+      vertical_break_flag=1;
       rotary_flag = 2; // 회전교차로 진입 후
       speed = 40;
       DesireSpeed_Write(speed);

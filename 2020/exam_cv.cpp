@@ -100,7 +100,7 @@ int outbreak(unsigned char* srcBuf, int iw, int ih, unsigned char* outBuf, int n
 
 int line_detector(unsigned char* srcBuf, int iw, int ih, unsigned char* outBuf, int nw, int nh, float slope[], int modeNum){
 
-  int angle = 1520;
+  int angle = 1500;
   Point p1, p2, p3, p4, p5;
 
   bool left_error = true;
@@ -176,13 +176,13 @@ int line_detector(unsigned char* srcBuf, int iw, int ih, unsigned char* outBuf, 
     float x_Difference = 160.0 - p5.x;
 
     if(x_Difference > 0.0){
-      steer = 1520.0 + 0.1 * x_Difference;
+      steer = 1500 + 0.1 * x_Difference;
     }
     else if(x_Difference < 0.0){
-      steer = 1520.0 + 0.1 * x_Difference;
+      steer = 1500 + 0.1 * x_Difference;
     }
     else{
-      steer = 1520.0;
+      steer = 1500;
     }
     angle = steer;
   }
@@ -1041,7 +1041,7 @@ int curve_detector(Mat& leftImg, Mat& rightImg, int number){
   slope = get_slope(p1, p2);
 
     if(error){
-      return 1520;
+      return 1500;
     }
     else if(slope < 0.0){ // right rotate
 
@@ -1057,11 +1057,11 @@ int curve_detector(Mat& leftImg, Mat& rightImg, int number){
 
       skewness = data_transform(xLeft, -120.0, 220.0, 0.0, skewnessValue);
 
-      steer = 1520.0 - (steer * skewness);
+      steer = 1500 - (steer * skewness);
       angle = steer;
 
-      if(angle > 1520){
-        angle = 1520;
+      if(angle > 1500){
+        angle = 1500;
       }
 
       return angle;
@@ -1080,11 +1080,11 @@ int curve_detector(Mat& leftImg, Mat& rightImg, int number){
 
       skewness = data_transform(xRight, 100, 440, -skewnessValue, 0.0);
 
-      steer = 1520.0 + (steer * skewness);
+      steer = 1500 + (steer * skewness);
       angle = steer;
 
-      if(angle < 1520){
-        return 1520;
+      if(angle < 1500){
+        return 1500;
       }
 
       return angle;
