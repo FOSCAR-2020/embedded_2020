@@ -190,6 +190,7 @@ bool parking_finish = 0;
 int backward_right_flag = 0;
 int cntDist = 0, cntDist2 = 0;
 int wall = 0;
+int auto_flag = 0;
 
 volatile int curve_count = 0;
 // volatile int curve_count = 3;
@@ -376,6 +377,8 @@ static void outBreakMission(struct display *disp, struct buffer *cambuf)
 
 static void drive(struct display *disp, struct buffer *cambuf)
 {
+    // printf("Drive func");
+
     unsigned char srcbuf[VPE_OUTPUT_W*VPE_OUTPUT_H*3];
     uint32_t optime;
     struct timeval st, et;
@@ -612,7 +615,7 @@ void * capture_thread(void *arg)
             break;
           case 4 :  // 주차
             driveOnOff = 1;
-            if(parking_flag == 3 || parking_flag == 4) driveOnOff = 0;
+            if(parking_flag == 3) driveOnOff = 0;
 
             break;
           case 5 :  // 회전 교차로
@@ -1090,7 +1093,7 @@ void vertical_parking()       // 수직 주차 모드
 
 void return_lane_vertical_right()      // 수직 주차 완료 후 차선 복귀
 {
-  CarLight_Write(ALL_OFF);
+  // CarLight_Write(ALL_OFF);
   angle = 1500;
   DesireSpeed_Write(50);
   int full_steer_flag = 0;
@@ -1109,11 +1112,12 @@ void return_lane_vertical_right()      // 수직 주차 완료 후 차선 복귀
       usleep(2000000);
       break;
     }
-    else if(dist >= 40 && full_steer_flag <= 1){ // 후방 거리가 30보다 커지면 오른쪽 최대조향
+    else if(dist >= 40 && full_steer_flag <= 1 ){ // 후방 거리가 30보다 커지면 오른쪽 최대조향
       full_steer_flag = 1;
-      angle = 1000;
+      angle = 1100;
     }
   }
+
 }
 
 void return_lane_horizontal_right()   // 수평 주차 완료 후 차선 복귀
@@ -1133,7 +1137,7 @@ void return_lane_horizontal_right()   // 수평 주차 완료 후 차선 복귀
     }
   }
 
-  SteeringServoControl_Write(1000);
+  SteeringServoControl_Write(1100);
   //
   DesireSpeed_Write(60);
   //
@@ -1142,7 +1146,7 @@ void return_lane_horizontal_right()   // 수평 주차 완료 후 차선 복귀
   while(1){
     dist = get_distance(4);
 
-    if(dist > 200){       // 후방 거리가 150 이상이면 멈춤
+    if(dist > 250){       // 후방 거리가 150 이상이면 멈춤
       DesireSpeed_Write(0);
       usleep(3000000);
       break;
@@ -1175,8 +1179,7 @@ void new_mode_parking(){
   else if(curve_count == 2 && angle < 1300){
     curve_count = 3;
     // 오른쪽 풀 조향
-    ///debug
-   // CameraYServoControl_Write(1630);
+    //CameraYServoControl_Write(1630);
     DesireSpeed_Write(60);
     return;
   }
@@ -1226,7 +1229,7 @@ void new_mode_parking(){
     else {
       gettimeofday(&stop, NULL);
       double time_go = (double)((stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec)/1000000.0;
-      if (time_go > 0.28) {
+      if (time_go > 0.44) {
         DesireSpeed_Write(0);
         usleep(1000000);
         parking_flag = 3;
@@ -1255,21 +1258,27 @@ void new_mode_parking(){
   }
   else if(parking_flag == 4)
   {
-    printf("hh");
+    // printf("hh");
     if (parking_finish){
       DesireSpeed_Write(80);
+      // printf("sw");
     }
     else{
-      DesireSpeed_Write(80);
+      DesireSpeed_Write(60);
     }
     ///문제점1. 커브돌때 이 와일문에 너무 늦게 탈출하여 커브를 인식못하고 나가버림 헤결필요
-    while(!is_parking_finish_right()&& parking_finish==0) {
-      driving_write_steer();
+    int autodist = get_distance(3);
+
+    if (autodist > 50 && parking_finish==0) {
+      printf("break");
+      auto_flag = 1;
     }
+    // if(auto_flag==0)
+    //   return;
     /////////////////////////////////////////////////////qnssy
-    printf("speed 60");
-    DesireSpeed_Write(60);//털리는 구간1
-    if(!parking_finish) {
+    // printf("speed 60");
+    // DesireSpeed_Write(60);//털리는 구간1
+    if(parking_finish == 0 && auto_flag == 1) {
       parking_finish = 1;         // 첫번째 주차 완료 표시
       parking_flag = 0;           // 첫번째 주차 완료 후 다시 주차 모드 시작
       backward_right_flag = 0;
@@ -1279,7 +1288,7 @@ void new_mode_parking(){
         horizon_parking_flag = 0;
       }
     }
-    else {
+    else if(parking_finish==1) {
       DesireSpeed_Write(60);//털리는 구간 2
 
       parking_flag = -1;     // 두번째 주차 완료 후 모드 변경
@@ -1293,133 +1302,6 @@ void new_mode_parking(){
     }
   }
 }
-
-void mode_parking(){
-
-
-
-  if(curve_count == 0 && angle < 1150){
-    curve_count++;
-    return;
-  }
-  else if(curve_count == 1 && angle > 1850){
-    curve_count++;
-    return;
-  }
-  else if(curve_count == 2 && angle < 1300){//1150
-    curve_count++;
-
-    // CameraYServoControl_Write(1630);
-    DesireSpeed_Write(80); // 80
-    // CarLight_Write(ALL_OFF);
-
-
-
-    return;
-  }
-  else if(curve_count < 3){
-    return;
-
-  }
-
-  if(parking_flag == 0 && is_parking_area_right()) {
-    printf("첫번째 장애물\n");
-    parking_flag = 1;
-    DesireSpeed_Write(80);
-    // DesireSpeed_Write(0);
-    // start = clock();
-  }
-  else if(parking_flag == 1 && is_horizon_parking() && is_parking_area_right())
-  {
-    DesireSpeed_Write(0);
-    usleep(10000000);
-    DesireSpeed_Write(80);
-    parking_flag = 4;
-  }
-  else if(parking_flag == 1 && !is_parking_area_right()) {
-    printf("수직주차 구간\n");
-    parking_flag = 2;
-  }
-  else if(parking_flag == 2 && is_parking_area_right()) {
-    printf("두번째 장애물fddffff\n");
-    // parking_flag = 3;
-    parking_flag = 777;
-
-    // DesireSpeed_Write(0);
-
-
-  }
-  else if(parking_flag == 3) {
-    // DesireSpeed_Write(0);
-    // usleep(500000);
-    go_backward_right();      // 후진 시작,
-    printf("후진완료후 플래그: %d",parking_flag);
-  }
-  else if(parking_flag==777){
-    if (time_flag == 0) {
-      //start = clock();
-      time_flag = 1;
-    }
-    else {
-      //stop = clock();
-      //float res2 = (float) (stop - start) / CLOCKS_PER_SEC;
-      //printf("interval time : %f \n", res2);
-      // if (res2 > 0.4) {
-      //   DesireSpeed_Write(0);
-      //   usleep(10000000);
-      //   // DesireSpeed_Write(80);
-      //     parking_flag = 3;
-      //     time_flag = 0;
-      // }
-    }
-
-  }
-  // bool horizontal_flag_ham=false;
-  else if(parking_flag == 4) {
-    // if(!parking_start_right()) {      // 수평주차모드
-    //   horizontal_parking_right();     // 주차모드
-    //   return_lane_horizontal_right(); // 차선복귀모드
-    // }
-    // else {                      // 수직주차모드
-    //   vertical_parking();       // 주차모드
-    //   return_lane_vertical_right();   // 차선복귀모드
-    // }
-    if(!horizontal_flag_ham) {      // 수평주차모드
-      horizontal_parking_right();     // 주차모드
-      return_lane_horizontal_right(); // 차선복귀모드
-       horizontal_flag_ham=true;
-    }
-    else {                      // 수직주차모드
-      vertical_parking();       // 주차모드
-      return_lane_vertical_right();   // 차선복귀모드
-    }
-    parking_flag = 5;
-
-    if (parking_finish){
-      DesireSpeed_Write(40);
-    }
-    else{
-      // DesireSpeed_Write(80);
-      DesireSpeed_Write(40);
-
-    }
-
-    while(!is_parking_finish_right()) {
-      driving_write_steer();
-    }
-    if(!parking_finish) {
-      parking_finish = 1;         // 첫번째 주차 완료 표시
-      parking_flag = 0;           // 첫번째 주차 완료 후 다시 주차 모드 시작
-      backward_right_flag = 0;
-    }
-    else {
-      // DesireSpeed_Write(30);
-      parking_flag = -1;          // 두번째 주차 완료 후 모드 변경
-      mode++;
-    }
-  }
-}
-
 
 
 /************************* 5. 회전 교차로 *******************************/
@@ -1451,6 +1333,7 @@ bool isAnotherCar()
   else if(dist >= MAX_DIST) {
     return false;
   }
+  return false;
 }
 
 clock_t start1, end1;
@@ -1483,7 +1366,7 @@ void mode_rotary()
     // printf("%d\n", rotary_enter_count);
     if(rotary_enter_count > max_rotary_threshold && rotary_ready_flag == 0) rotary_ready_flag = 1;  //차가 완전히 지나가기 전
     else if(rotary_enter_count < min_rotary_threshold && rotary_ready_flag == 1){   //차가 지나간 후에 주행 시작
-      // printf("rotaty_start!!!");
+      printf("rotaty_start!!!");
       start1 = clock();
       CameraYServoControl_Write(1680);
       vertical_break_flag=1;
@@ -1564,7 +1447,7 @@ void mode_tunnel()
   else if((tunnel_flag == 1) && (dist_left > finish_tunnel_threshold) && (dist_back_left > finish_tunnel_threshold)) { // 터널 탈출
     tunnel_flag = 2;
     printf("tunnel_end!!!\n");
-    CarLight_Write(ALL_OFF);
+    // CarLight_Write(ALL_OFF);
 
   }
 
@@ -2001,26 +1884,26 @@ int main(int argc, char **argv)
         break;
       case 1 :  // 출발 및 도로주행
           mode_start();
-          printf("mode %d\n",mode);
+          //printf("mode %d\n",mode);
 
           break;
       case 2 :  // 고가도로 구간
           mode_overpass();
-          printf("mode %d\n",mode);
+          //printf("mode %d\n",mode);
 
 
           break;
       case 3 :  // 우선정지 장애물
           mode_outbreak();
-          printf("mode %d\n",mode);
+          //printf("mode %d\n",mode);
 
 
           break;
       case 4 :  // 주차
           //mode_parking();
           new_mode_parking();
-          printf("mode %d %d\n",mode,curve_count);
-          printf("dist: %d wall: %d\n",dist,wall);
+          //printf("mode %d %d\n",mode,curve_count);
+          //printf("dist: %d wall: %d\n",dist,wall);
 
 
           break;
@@ -2032,17 +1915,17 @@ int main(int argc, char **argv)
           break;
       case 6 :  // 터널
           mode_tunnel();
-          printf("mode %d\n",mode);
+          //printf("mode %d\n",mode);
 
           break;
       case 7 :  // 차로 추월
           mode_passing_lane();
-          printf("mode %d\n",mode);
+          //printf("mode %d\n",mode);
 
           break;
       case 8 : // 신호등
           mode_traffic_light();
-          printf("mode %d\n",mode);
+          //printf("mode %d\n",mode);
 
           break;
     }
